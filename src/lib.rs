@@ -6,12 +6,12 @@
 #![no_std]
 #![feature(asm)]
 
-extern crate bare_metal;
-extern crate cortex_m;
-extern crate stm32f103xx;
-extern crate stm32f103xx_hal;
-extern crate vcell;
-extern crate usb_device;
+use bare_metal;
+use cortex_m;
+// use stm32f103xx;
+use stm32l4_hal; // as hal;
+use vcell;
+use usb_device;
 
 mod endpoint;
 
@@ -22,4 +22,4 @@ mod freezable_ref_cell;
 /// USB peripheral driver.
 pub mod bus;
 
-pub use bus::UsbBus;
+pub use crate::bus::UsbBus;

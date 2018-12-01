@@ -1,42 +1,55 @@
 #![no_std]
 #![no_main]
 
-extern crate cortex_m;
-#[macro_use]
-extern crate cortex_m_rt as rt;
-extern crate panic_semihosting;
-extern crate stm32f103xx_hal as hal;
-extern crate usb_device;
-extern crate stm32f103xx_usb;
+use cortex_m_rt::entry;
+use cortex_m;
+//#[macro_use]
+use cortex_m_rt as rt;
+use panic_semihosting;
+use stm32l4_hal as hal;
+use usb_device;
+use stm32l432_usb;
 
-use hal::prelude::*;
-use hal::stm32f103xx;
-use rt::ExceptionFrame;
+use self::hal::prelude::*;
+use self::hal::stm32;
+// use self::rt::ExceptionFrame;
 
 use usb_device::prelude::*;
-use stm32f103xx_usb::UsbBus;
+use stm32l432_usb::UsbBus;
 
 mod cdc_acm;
 
-entry!(main);
+#[entry]
 fn main() -> ! {
-    let dp = stm32f103xx::Peripherals::take().unwrap();
+    let dp = hal::stm32::Peripherals::take().unwrap();
 
     let mut flash = dp.FLASH.constrain();
     let mut rcc = dp.RCC.constrain();
 
     let clocks = rcc.cfgr
-        .use_hse(8.mhz())
-        .sysclk(48.mhz())
-        .pclk1(24.mhz())
+        // f103
+        // .use_hse(8.mhz())
+        // .sysclk(48.mhz())
+        // .pclk1(24.mhz())
+
+        // l432
+        .hsi48(true)  // needed for RNG + USB
+        .sysclk(64.mhz())
+        .pclk1(32.mhz())
+
         .freeze(&mut flash.acr);
 
-    assert!(clocks.usbclk_valid());
+    // assert!(clocks.usbclk_valid());
 
-    let mut gpioa = dp.GPIOA.split(&mut rcc.apb2);
+    let mut gpioa = dp.GPIOA.split(&mut rcc.ahb2);
 
-    let usb_bus = UsbBus::usb(dp.USB, &mut rcc.apb1);
-    usb_bus.init(|b| b.enable_reset(&clocks, &mut gpioa.crh, gpioa.pa12));
+    let usb_bus = UsbBus::usb(dp.USB, &mut rcc.apb1r1);
+    usb_bus.init(|b| b.enable_reset(
+        &clocks,
+        &mut gpioa.moder,
+        &mut gpioa.otyper,
+        gpioa.pa12
+    ));
 
     let serial = cdc_acm::SerialPort::new(&usb_bus);
 
@@ -72,12 +85,12 @@ fn main() -> ! {
     }
 }
 
-exception!(HardFault, hard_fault);
-fn hard_fault(ef: &ExceptionFrame) -> ! {
-    panic!("{:#?}", ef);
-}
+// exception!(HardFault, hard_fault);
+// fn hard_fault(ef: &ExceptionFrame) -> ! {
+//     panic!("{:#?}", ef);
+// }
 
-exception!(*, default_handler);
-fn default_handler(irqn: i16) {
-    panic!("Unhandled exception (IRQn = {})", irqn);
-}
+// exception!(*, default_handler);
+// fn default_handler(irqn: i16) {
+//     panic!("Unhandled exception (IRQn = {})", irqn);
+// }

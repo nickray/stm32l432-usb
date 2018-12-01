@@ -3,10 +3,10 @@ use core::mem;
 use bare_metal::CriticalSection;
 use vcell::VolatileCell;
 use cortex_m::interrupt;
-use stm32f103xx::{USB, usb};
+use stm32l4_hal::stm32::{USB, usb};
 use usb_device::{Result, UsbError};
 use usb_device::endpoint::EndpointType;
-use atomic_mutex::AtomicMutex;
+use crate::atomic_mutex::AtomicMutex;
 
 type EndpointBuffer = &'static mut [VolatileCell<u32>];
 
@@ -126,7 +126,7 @@ impl Endpoint {
         };
 
         self.reg().modify(|_, w|
-            Self::clear_toggle_bits(w)
+            unsafe { Self::clear_toggle_bits(w)
                 .ctr_rx().clear_bit()
                 // dtog_rx
                 // stat_rx
@@ -135,7 +135,7 @@ impl Endpoint {
                 .ctr_tx().clear_bit()
                 // dtog_rx
                 // stat_tx
-                .ea().bits(self.index));
+                .ea().bits(self.index) });
 
         if self.out_buf.is_some() {
             self.set_stat_rx(cs, EndpointStatus::Valid);

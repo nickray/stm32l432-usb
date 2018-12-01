@@ -5,20 +5,20 @@ use usb_device::bus::{UsbBusWrapper, PollResult};
 use usb_device::endpoint::{EndpointDirection, EndpointType, EndpointAddress};
 use cortex_m::asm::delay;
 use cortex_m::interrupt;
-use stm32f103xx::USB;
-use stm32f103xx_hal::prelude::*;
-use stm32f103xx_hal::rcc;
-use stm32f103xx_hal::gpio::{self, gpioa};
-use atomic_mutex::AtomicMutex;
-use freezable_ref_cell::FreezableRefCell;
-use endpoint::{NUM_ENDPOINTS, Endpoint, EndpointStatus, calculate_count_rx};
+use stm32l4_hal::stm32::USB;
+use stm32l4_hal::prelude::*;
+use stm32l4_hal::rcc;
+use stm32l4_hal::gpio::{self, gpioa};
+use crate::atomic_mutex::AtomicMutex;
+use crate::freezable_ref_cell::FreezableRefCell;
+use crate::endpoint::{NUM_ENDPOINTS, Endpoint, EndpointStatus, calculate_count_rx};
 
 struct Reset {
     delay: u32,
     pin: RefCell<gpioa::PA12<gpio::Output<gpio::PushPull>>>,
 }
 
-/// USB peripheral driver for STM32F103 microcontrollers.
+/// USB peripheral driver for STM32L432 microcontrollers.
 pub struct UsbBus {
     regs: AtomicMutex<USB>,
     endpoints: [Endpoint; NUM_ENDPOINTS],
@@ -29,14 +29,14 @@ pub struct UsbBus {
 
 impl UsbBus {
     /// Constructs a new USB peripheral driver.
-    pub fn usb(regs: USB, apb1: &mut rcc::APB1) -> UsbBusWrapper<Self> {
-        // TODO: apb1.enr is not public, figure out how this should really interact with the HAL
+    pub fn usb(regs: USB, apb1r1: &mut rcc::APB1R1) -> UsbBusWrapper<Self> {
+        // TODO: apb1.enr1 is not public, figure out how this should really interact with the HAL
         // crate
 
-        let _ = apb1;
+        let _ = apb1r1;
         interrupt::free(|_| {
-            let dp = unsafe { ::stm32f103xx::Peripherals::steal() };
-            dp.RCC.apb1enr.modify(|_, w| w.usben().enabled());
+            let dp = unsafe { ::stm32l4_hal::stm32::Peripherals::steal() };
+            dp.RCC.apb1enr1.modify(|_, w| w.usbfsen().set_bit());
         });
 
         let bus = UsbBus {
@@ -60,11 +60,13 @@ impl UsbBus {
 
     /// Enables the `reset` method.
     pub fn enable_reset<M>(&mut self,
-        clocks: &rcc::Clocks, crh: &mut gpioa::CRH, pa12: gpioa::PA12<M>)
+        clocks: &rcc::Clocks,
+        moder: &mut gpioa::MODER, otyper: &mut gpioa::OTYPER,
+        pa12: gpioa::PA12<M>)
     {
         *self.reset.borrow_mut() = Some(Reset {
             delay: clocks.sysclk().0,
-            pin: RefCell::new(pa12.into_push_pull_output(crh)),
+            pin: RefCell::new(pa12.into_push_pull_output(moder, otyper)),
         });
     }
 
