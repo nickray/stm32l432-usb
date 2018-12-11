@@ -3,12 +3,16 @@
 
 use cortex_m_rt::entry;
 use cortex_m;
+use cortex_m::asm::bkpt;
 //#[macro_use]
 use cortex_m_rt as rt;
 use panic_semihosting;
 use stm32l4_hal as hal;
 use usb_device;
 use stm32l432_usb;
+
+use cortex_m_semihosting::hio;
+use core::fmt::Write;
 
 use self::hal::prelude::*;
 use self::hal::stm32;
@@ -21,7 +25,8 @@ mod cdc_acm;
 
 #[entry]
 fn main() -> ! {
-    let dp = hal::stm32::Peripherals::take().unwrap();
+    let cp = hal::CorePeripherals::take().unwrap();
+    let dp = hal::Peripherals::take().unwrap();
 
     let mut flash = dp.FLASH.constrain();
     let mut rcc = dp.RCC.constrain();
@@ -34,10 +39,12 @@ fn main() -> ! {
 
         // l432
         .hsi48(true)  // needed for RNG + USB
-        .sysclk(64.mhz())
-        .pclk1(32.mhz())
+        // .sysclk(64.mhz())
+        // .pclk1(32.mhz())
 
         .freeze(&mut flash.acr);
+
+    bkpt();
 
     // assert!(clocks.usbclk_valid());
 
@@ -60,10 +67,13 @@ fn main() -> ! {
         .device_class(cdc_acm::USB_CLASS_CDC)
         .build(&[&serial]);
 
+    bkpt();
     usb_dev.force_reset().expect("reset failed");
 
     loop {
         usb_dev.poll();
+        let mut stdout = hio::hstdout().unwrap();
+        writeln!(stdout, "usb_dev.state() = {:?}", usb_dev.state()).ok();
 
         if usb_dev.state() == UsbDeviceState::Configured {
             let mut buf = [0u8; 64];

@@ -3,7 +3,7 @@ use core::mem;
 use usb_device::{Result, UsbError};
 use usb_device::bus::{UsbBusWrapper, PollResult};
 use usb_device::endpoint::{EndpointDirection, EndpointType, EndpointAddress};
-use cortex_m::asm::delay;
+use cortex_m::asm::{bkpt, delay};
 use cortex_m::interrupt;
 use stm32l4_hal::stm32::USB;
 use stm32l4_hal::prelude::*;
@@ -12,6 +12,10 @@ use stm32l4_hal::gpio::{self, gpioa};
 use crate::atomic_mutex::AtomicMutex;
 use crate::freezable_ref_cell::FreezableRefCell;
 use crate::endpoint::{NUM_ENDPOINTS, Endpoint, EndpointStatus, calculate_count_rx};
+
+// temporary :)
+use cortex_m_semihosting::hio;
+use core::fmt::Write;
 
 struct Reset {
     delay: u32,
@@ -33,11 +37,16 @@ impl UsbBus {
         // TODO: apb1.enr1 is not public, figure out how this should really interact with the HAL
         // crate
 
+        let mut stdout = hio::hstdout().unwrap();
+
         let _ = apb1r1;
         interrupt::free(|_| {
             let dp = unsafe { ::stm32l4_hal::stm32::Peripherals::steal() };
             dp.RCC.apb1enr1.modify(|_, w| w.usbfsen().set_bit());
+            while dp.RCC.apb1enr1.read().usbfsen().bit_is_clear() {}
         });
+
+        writeln!(stdout, "rcc.apb1.enr.usbsfsen is set!").ok();
 
         let bus = UsbBus {
             regs: AtomicMutex::new(regs),
@@ -127,6 +136,9 @@ impl ::usb_device::bus::UsbBus for UsbBus {
     }
 
     fn enable(&mut self) {
+        let mut stdout = hio::hstdout().unwrap();
+        writeln!(stdout, "someone called `enable`").ok();
+
         self.reset.freeze();
 
         let mut max = 0;
@@ -141,22 +153,53 @@ impl ::usb_device::bus::UsbBus for UsbBus {
         interrupt::free(|cs| {
             let regs = self.regs.lock(cs);
 
+            let before = regs.cntr.read().bits();
+            // writeln!(stdout, "USB_CNTR before: {:#016b}", before).ok();
             regs.cntr.modify(|_, w| w.pdwn().clear_bit());
+            let after = regs.cntr.read().bits();
+            // writeln!(stdout, "USB_CNTR after : {:#016b}", after).ok();
 
             // There is a chip specific startup delay. For STM32F103xx it's 1µs and this should wait for
             // at least that long.
             delay(72);
+            let after_delay = regs.cntr.read().bits();
+            // writeln!(stdout, "USB_CNTR after_delay: {}", after).ok();
 
+            let before = regs.btable.read().bits();
+            // writeln!(stdout, "USB_BTABLE before: {:#016b}", before).ok();
             regs.btable.modify(|_, w| unsafe { w.btable().bits(0) });
+            let after = regs.btable.read().bits();
+            // writeln!(stdout, "USB_BTABLE after : {:#016b}", after).ok();
+            // bkpt();
+
+            let before = regs.cntr.read().bits();
+            // writeln!(stdout, "USB_CNTR before: {:#016b}", before).ok();
+            let before = regs.cntr.read().bits();
+            writeln!(stdout, "USB_CNTR before: {}", before).ok();
             regs.cntr.modify(|_, w| w
+                // force USB reset
                 .fres().clear_bit()
+                // USB reset interrupt mask
                 .resetm().set_bit()
+                // Suspend mode interrupt mask
                 .suspm().set_bit()
+                // Wakeup interrupt mask
                 .wkupm().set_bit()
+                // Error interrupt mask
                 .errm().set_bit()
+                // Packet memory area over/underrun interrupt mask
                 .pmaovrm().set_bit()
+                // Correct transfer interrupt mask
                 .ctrm().set_bit());
+            let after = regs.cntr.read().bits();
+            // writeln!(stdout, "USB_CNTR after : {:#016b}", after).ok();
+            //
+            let before = regs.istr.read().bits();
+            // writeln!(stdout, "USB_ISTR before: {:#016b}", before).ok();
             regs.istr.modify(|_, w| unsafe { w.bits(0) });
+            let after = regs.istr.read().bits();
+            // writeln!(stdout, "USB_ISTR after : {:#016b}", after).ok();
+            // bkpt();
         });
     }
 
@@ -190,7 +233,10 @@ impl ::usb_device::bus::UsbBus for UsbBus {
         };
 
         let istr = regs.istr.read();
+        let mut stdout = hio::hstdout().unwrap();
+        writeln!(stdout, "istr = {}", istr.bits()).ok();
 
+        bkpt();
         if istr.wkup().bit_is_set() {
             regs.istr.modify(|_, w| w.wkup().clear_bit());
 

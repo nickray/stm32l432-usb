@@ -11,7 +11,8 @@ stm32l4 = { path = "../stm32-rs/stm32l4", features = ["stm32l4x2", "rt"] }
 # TODO: this commit is used temporarily to be able to set USB clocks correctly in the examples
 stm32l4-hal = { path = "../stm32l4-hal", features = ["stm32l4x2", "unproven", "rt"] }
 vcell = "0.1.0"
-usb-device = { git = "https://github.com/mvirkkunen/usb-device", rev = "6b606d394bdebf33de8866a4a21c3aa41e32c010" }
+# usb-device = { git = "https://github.com/mvirkkunen/usb-device", rev = "6b606d394bdebf33de8866a4a21c3aa41e32c010" }
+usb-device = { path = "../usb-device" }
 
 [dev-dependencies]
 cortex-m-rt = "0.6.5"
