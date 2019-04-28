@@ -13,7 +13,7 @@ cortex-m = "0.5.8"
 # version = "0.3.6"
 # path = "../stm32l4xx-hal"
 git = "https://github.com/nickray/stm32l4xx-hal"
-branch = "patched-0.6.0-pac"
+branch = "patched-0.7.0-pac"
 default-features = false
 features = ["rt", "stm32l4x2"]
 
