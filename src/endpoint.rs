@@ -3,7 +3,7 @@ use core::mem;
 use bare_metal::CriticalSection;
 use vcell::VolatileCell;
 use cortex_m::interrupt;
-use stm32f1xx_hal::stm32::{USB, usb};
+use stm32l4xx_hal::stm32::{USB, usb};
 use usb_device::{Result, UsbError};
 use usb_device::endpoint::EndpointType;
 use crate::atomic_mutex::AtomicMutex;
@@ -51,7 +51,9 @@ pub fn calculate_count_rx(mut size: usize) -> Result<(usize, u16)> {
 
 impl Endpoint {
     pub const MEM_START: usize = mem::size_of::<BufferDescriptor>() * NUM_ENDPOINTS;
-    pub const MEM_SIZE: usize = 512;
+    // TODO: confirm correct
+    pub const MEM_SIZE: usize = 1024;
+    // TODO: confirm correct or fix
     const MEM_ADDR: *mut VolatileCell<u32> = 0x4000_6000 as *mut VolatileCell<u32>;
 
     pub fn new(index: u8) -> Endpoint {
@@ -242,7 +244,7 @@ impl Endpoint {
     }
 
     /*pub fn modify<F>(&self, _cs: CriticalSection, f: F)
-        where for<'w> F: FnOnce(&usb::ep0r::R, &'w mut usb::ep0r::W) -> &'w mut usb::ep0r::W
+        where for<'w> F: FnOnce(&usb::epr::R, &'w mut usb::epr::W) -> &'w mut usb::epr::W
     {
         self.reg().modify(f)
     }*/
@@ -281,7 +283,7 @@ impl Endpoint {
 }
 
 /*#[repr(transparent)]
-struct EndpointReg(usb::EP0R);
+struct EndpointReg(usb::EPR);
 
 impl EndpointReg {
 }*/

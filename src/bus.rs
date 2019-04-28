@@ -6,10 +6,10 @@ use usb_device::bus::{UsbBusAllocator, PollResult};
 use usb_device::endpoint::{EndpointType, EndpointAddress};
 use cortex_m::asm::delay;
 use cortex_m::interrupt;
-use stm32f1xx_hal::prelude::*;
-use stm32f1xx_hal::rcc;
-use stm32f1xx_hal::gpio::{self, gpioa};
-use stm32f1xx_hal::stm32::{USB, RCC};
+use stm32l4xx_hal::prelude::*;
+use stm32l4xx_hal::rcc;
+use stm32l4xx_hal::gpio::{self, gpioa};
+use stm32l4xx_hal::stm32::{USB, RCC};
 use crate::atomic_mutex::AtomicMutex;
 use crate::endpoint::{NUM_ENDPOINTS, Endpoint, EndpointStatus, calculate_count_rx};
 
@@ -18,7 +18,7 @@ struct Reset {
     pin: Mutex<RefCell<gpioa::PA12<gpio::Output<gpio::PushPull>>>>,
 }
 
-/// USB peripheral driver for STM32F103 microcontrollers.
+/// USB peripheral driver for STM32L43x and L44x microcontrollers.
 pub struct UsbBus {
     regs: AtomicMutex<USB>,
     endpoints: [Endpoint; NUM_ENDPOINTS],
@@ -28,13 +28,13 @@ pub struct UsbBus {
 }
 
 impl UsbBus {
-    fn new(regs: USB, apb1: &mut rcc::APB1, reset: Option<Reset>) -> UsbBusAllocator<Self> {
-        // TODO: apb1.enr is not public, figure out how this should really interact with the HAL
+    fn new(regs: USB, apb1r1: &mut rcc::APB1R1, reset: Option<Reset>) -> UsbBusAllocator<Self> {
+        // TODO: apb1r1.enr is not public, figure out how this should really interact with the HAL
         // crate
 
-        let _ = apb1;
+        let _ = apb1r1;
         interrupt::free(|_| {
-            unsafe { (&*RCC::ptr()) }.apb1enr.modify(|_, w| w.usben().set_bit());
+            unsafe { (&*RCC::ptr()) }.apb1enr1.modify(|_, w| w.usbfsen().set_bit());
         });
 
         let bus = UsbBus {
@@ -57,24 +57,25 @@ impl UsbBus {
     }
 
     /// Constructs a new USB peripheral driver.
-    pub fn usb(regs: USB, apb1: &mut rcc::APB1) -> UsbBusAllocator<Self> {
-        UsbBus::new(regs, apb1, None)
+    pub fn usb(regs: USB, apb1r1: &mut rcc::APB1R1) -> UsbBusAllocator<Self> {
+        UsbBus::new(regs, apb1r1, None)
     }
 
     /// Constructs a new USB peripheral driver with the "reset" method enabled.
     pub fn usb_with_reset<M>(
         regs: USB,
-        apb1: &mut rcc::APB1,
+        apb1r1: &mut rcc::APB1R1,
         clocks: &rcc::Clocks,
-        crh: &mut gpioa::CRH,
+        moder: &mut gpioa::MODER,
+        otyper: &mut gpioa::OTYPER,
         pa12: gpioa::PA12<M>) -> UsbBusAllocator<Self>
     {
         UsbBus::new(
             regs,
-            apb1,
+            apb1r1,
             Some(Reset {
                 delay: clocks.sysclk().0,
-                pin: Mutex::new(RefCell::new(pa12.into_push_pull_output(crh))),
+                pin: Mutex::new(RefCell::new(pa12.into_push_pull_output(moder, otyper))),
             }))
     }
 
@@ -156,6 +157,7 @@ impl usb_device::bus::UsbBus for UsbBus {
 
             // There is a chip specific startup delay. For STM32F103xx it's 1µs and this should wait for
             // at least that long.
+            // TODO: figure out right delay for L43x/L44x
             delay(72);
 
             regs.btable.modify(|_, w| unsafe { w.btable().bits(0) });
