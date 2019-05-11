@@ -54,6 +54,7 @@ impl Endpoint {
     // TODO: confirm correct
     pub const MEM_SIZE: usize = 1024;
     // TODO: confirm correct or fix
+    // const MEM_ADDR: *mut VolatileCell<u32> = 0x4000_6000 as *mut VolatileCell<u32>;
     const MEM_ADDR: *mut VolatileCell<u32> = 0x4000_6800 as *mut VolatileCell<u32>;
 
     pub fn new(index: u8) -> Endpoint {

@@ -11,6 +11,8 @@ use stm32l4xx_hal::{prelude::*, stm32};
 use usb_device::prelude::*;
 use stm32l43x_usbd::UsbBus;
 
+use stm32l4xx_hal::stm32::{USB};
+
 mod cdc_acm;
 
 #[entry]
@@ -44,12 +46,40 @@ fn main() -> ! {
 
     let mut serial = cdc_acm::SerialPort::new(&usb_bus);
 
-    let mut usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x5824, 0x27dd))
+    // let mut usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x5824, 0x27dd))
+    let mut usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x16c0, 0x27dd))
         .manufacturer("Fake company")
         .product("Serial port")
         .serial_number("TEST")
         .device_class(cdc_acm::USB_CLASS_CDC)
         .build();
+
+
+    // uuhhhh... this probably belongs in bus::Reset?
+    unsafe {
+        let bcdr = &(*USB::ptr()).bcdr;
+
+        // bcdr.write(|w| w.bcden().set_bit().dcden().set_bit());
+        // if bcdr.read().dcdet().bit_is_set() {
+        //     bcdr.write(|w| w.bcden().set_bit().pden().set_bit());
+        //     if bcdr.read().ps2det().bit_is_set() {
+        //         // res = unk
+        //     } else if bcdr.read().pdet().bit_is_set() {
+        //         bcdr.write(|w| w.bcden().set_bit().sden().set_bit());
+        //         if bcdr.read().sdet().bit_is_set() {
+        //             // res = dcp
+        //         } else {
+        //             // res = cdp
+        //         }
+        //     } else {
+        //         // res = sdp
+        //     }
+        // } else {
+        //     // res = dsc
+        // }
+
+        bcdr.write(|w| w.dppu().set_bit());
+    }
 
     usb_dev.force_reset().expect("reset failed");
 
