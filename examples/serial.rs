@@ -6,10 +6,10 @@
 extern crate panic_semihosting;
 
 use cortex_m_rt::entry;
-use stm32f1xx_hal::{prelude::*, stm32};
+use stm32l4xx_hal::{prelude::*, stm32};
 
 use usb_device::prelude::*;
-use stm32f103xx_usb::UsbBus;
+use stm32l43x_usbd::UsbBus;
 
 mod cdc_acm;
 
@@ -21,17 +21,26 @@ fn main() -> ! {
     let mut rcc = dp.RCC.constrain();
 
     let clocks = rcc.cfgr
-        .use_hse(8.mhz())
+        // .use_hse(8.mhz())
         .sysclk(48.mhz())
         .pclk1(24.mhz())
+        .pclk2(24.mhz())
+        .hsi48(true)
         .freeze(&mut flash.acr);
 
-    assert!(clocks.usbclk_valid());
+    // assert!(clocks.usbclk_valid());
 
-    let mut gpioa = dp.GPIOA.split(&mut rcc.apb2);
+    let mut gpioa = dp.GPIOA.split(&mut rcc.ahb2);
+
+    let _usb_dm = gpioa.pa11.into_af10(&mut gpioa.moder, &mut gpioa.afrh);
+    let usb_dp = gpioa.pa12.into_af10(&mut gpioa.moder, &mut gpioa.afrh);
+
+    // disable Vddusb power isolation
+    let pwr = dp.PWR.constrain(&mut rcc.apb1r1); // turns it on
+    pwr.enable_usb();
 
     let usb_bus = UsbBus::usb_with_reset(dp.USB,
-        &mut rcc.apb1, &clocks, &mut gpioa.crh, gpioa.pa12);
+        &mut rcc.apb1r1, &clocks, &mut gpioa.moder, &mut gpioa.otyper, usb_dp);
 
     let mut serial = cdc_acm::SerialPort::new(&usb_bus);
 

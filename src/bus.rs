@@ -160,7 +160,7 @@ impl usb_device::bus::UsbBus for UsbBus {
             // TODO: figure out right delay for L43x/L44x
             delay(72);
 
-            regs.btable.modify(|_, w| unsafe { w.btable().bits(0) });
+            regs.btable.modify(|_, w| w.btable().bits(0));
             regs.cntr.modify(|_, w| w
                 .fres().clear_bit()
                 .resetm().set_bit()
@@ -178,7 +178,7 @@ impl usb_device::bus::UsbBus for UsbBus {
             let regs = self.regs.lock(cs);
 
             regs.istr.modify(|_, w| unsafe { w.bits(0) });
-            regs.daddr.modify(|_, w| unsafe { w.ef().set_bit().add().bits(0) });
+            regs.daddr.modify(|_, w| w.ef().set_bit().add().bits(0));
 
             for ep in self.endpoints.iter() {
                 ep.configure(cs);
@@ -188,7 +188,7 @@ impl usb_device::bus::UsbBus for UsbBus {
 
     fn set_device_address(&self, addr: u8) {
         interrupt::free(|cs| {
-            self.regs.lock(cs).daddr.modify(|_, w| unsafe { w.add().bits(addr as u8) });
+            self.regs.lock(cs).daddr.modify(|_, w| w.add().bits(addr as u8));
         });
     }
 

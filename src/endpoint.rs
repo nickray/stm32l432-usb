@@ -54,7 +54,7 @@ impl Endpoint {
     // TODO: confirm correct
     pub const MEM_SIZE: usize = 1024;
     // TODO: confirm correct or fix
-    const MEM_ADDR: *mut VolatileCell<u32> = 0x4000_6000 as *mut VolatileCell<u32>;
+    const MEM_ADDR: *mut VolatileCell<u32> = 0x4000_6800 as *mut VolatileCell<u32>;
 
     pub fn new(index: u8) -> Endpoint {
         Endpoint {
@@ -250,13 +250,11 @@ impl Endpoint {
     }*/
 
     fn clear_toggle_bits(w: &mut usb::epr::W) -> &mut usb::epr::W {
-        unsafe {
-            w
-                .dtog_rx().clear_bit()
-                .dtog_tx().clear_bit()
-                .stat_rx().bits(0)
-                .stat_tx().bits(0)
-        }
+        w
+            .dtog_rx().clear_bit()
+            .dtog_tx().clear_bit()
+            .stat_rx().bits(0)
+            .stat_tx().bits(0)
     }
 
     pub fn clear_ctr_rx(&self, _cs: &CriticalSection) {
@@ -268,17 +266,15 @@ impl Endpoint {
     }
 
     pub fn set_stat_rx(&self, _cs: &CriticalSection, status: EndpointStatus) {
-        self.reg().modify(|r, w| unsafe {
-            Self::clear_toggle_bits(w)
+        self.reg().modify(|r, w| Self::clear_toggle_bits(w)
                 .stat_rx().bits(r.stat_rx().bits() ^ (status as u8))
-        });
+        );
     }
 
     pub fn set_stat_tx(&self, _cs: &CriticalSection, status: EndpointStatus) {
-        self.reg().modify(|r, w| unsafe {
-            Self::clear_toggle_bits(w)
+        self.reg().modify(|r, w| Self::clear_toggle_bits(w)
                 .stat_tx().bits(r.stat_tx().bits() ^ (status as u8))
-        });
+        );
     }
 }
 
