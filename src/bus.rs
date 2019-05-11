@@ -22,15 +22,18 @@ struct Reset {
 pub struct UsbBus {
     regs: AtomicMutex<USB>,
     endpoints: [Endpoint; NUM_ENDPOINTS],
-    next_ep_mem: usize,
+    next_ep_mem: u16,
     max_endpoint: usize,
     reset: Option<Reset>,
 }
 
 impl UsbBus {
     fn new(regs: USB, apb1r1: &mut rcc::APB1R1, reset: Option<Reset>) -> UsbBusAllocator<Self> {
-        // TODO: apb1r1.enr is not public, figure out how this should really interact with the HAL
-        // crate
+        // TODO (lumpio): apb1r1.enr is not public, figure out how this should really
+        // interact with the HAL crate
+        // tentative answer (nickray): RCC constructor should return proxy around this
+        // bit, interpreted as `usb_enable()` method; UsbBus constructor should take
+        // ownership of the method. Maybe the HAL should even hide this...
 
         let _ = apb1r1;
         interrupt::free(|_| {
@@ -39,7 +42,7 @@ impl UsbBus {
 
         let bus = UsbBus {
             regs: AtomicMutex::new(regs),
-            next_ep_mem: Endpoint::MEM_START,
+            next_ep_mem: Endpoint::MEM_START,  // start in USB SRAM immediately after BTABLE
             max_endpoint: 0,
             endpoints: unsafe {
                 let mut endpoints: [Endpoint; NUM_ENDPOINTS] = mem::uninitialized();
@@ -79,15 +82,17 @@ impl UsbBus {
             }))
     }
 
-    fn alloc_ep_mem(next_ep_mem: &mut usize, size: usize) -> Result<usize> {
+    fn alloc_ep_mem(next_ep_mem: &mut u16, size: usize) -> Result<u16> {
+        // well this is a bit useless/tight coupling with the calculation in
+        // `calculate_count_rx (the actual values are 2, 4, 6, ... 62, 62, 64, 96, .128, ...)
         assert!(size & 1 == 0);
 
         let addr = *next_ep_mem;
-        if addr + size > Endpoint::MEM_SIZE {
+        if (addr as usize) + size > Endpoint::MEM_SIZE {
             return Err(UsbError::EndpointMemoryOverflow);
         }
 
-        *next_ep_mem += size;
+        *next_ep_mem += size as u16;
 
         Ok(addr)
     }
@@ -102,6 +107,9 @@ impl usb_device::bus::UsbBus for UsbBus {
         max_packet_size: u16,
         _interval: u8) -> Result<EndpointAddress>
     {
+        // uhhh... if ep_addr is specified, it has an index, use thet
+        // if not specified, loop over all (except control endpoint, 0),
+        // pick first unused (or of correct type?! maybe some IN/OUT thing?)
         for index in ep_addr.map(|a| a.index()..a.index()+1).unwrap_or(1..NUM_ENDPOINTS) {
             let ep = &mut self.endpoints[index];
 
@@ -124,7 +132,7 @@ impl usb_device::bus::UsbBus for UsbBus {
                 UsbDirection::In if !ep.is_in_buf_set() => {
                     let size = (max_packet_size as usize + 1) & !0x01;
 
-                    let addr = Self::alloc_ep_mem(&mut self.next_ep_mem, size as usize)?;
+                    let addr = Self::alloc_ep_mem(&mut self.next_ep_mem, size)?;
 
                     ep.set_in_buf(addr, size as usize);
 

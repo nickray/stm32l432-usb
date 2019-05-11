@@ -8,16 +8,21 @@ use usb_device::{Result, UsbError};
 use usb_device::endpoint::EndpointType;
 use crate::atomic_mutex::AtomicMutex;
 
-type EndpointBuffer = &'static mut [VolatileCell<u32>];
+// this could/should probably be a VolatileCell<u8>, as L432
+// does not have the limitations of F103
+type EndpointBuffer = &'static mut [VolatileCell<u16>];
 
 pub const NUM_ENDPOINTS: usize = 8;
 
+// NB: in contrast to the F103, the "USB SRAM" (starting at 0x4000_6000)
+// is half-word (16 bit) organized.
+
 #[repr(C)]
 struct BufferDescriptor {
-    pub addr_tx: VolatileCell<usize>,
-    pub count_tx: VolatileCell<usize>,
-    pub addr_rx: VolatileCell<usize>,
-    pub count_rx: VolatileCell<usize>,
+    pub addr_tx: VolatileCell<u16>,
+    pub count_tx: VolatileCell<u16>,
+    pub addr_rx: VolatileCell<u16>,
+    pub count_rx: VolatileCell<u16>,
 }
 
 /// Arbitrates access to the endpoint-specific registers and packet buffer memory.
@@ -30,34 +35,41 @@ pub struct Endpoint {
 }
 
 pub fn calculate_count_rx(mut size: usize) -> Result<(usize, u16)> {
+    // USB_COUNTn_RX entries are (BLSIZE, NUM_BLOCK[4:0], COUNTn_RX[9:0]).
+    // If BLSIZE = 0, then the buffer size is 2*NUM_BLOCK byte
+    // If BLSIZE = 1, then the buffer size is 32*(NUM_BLOCK - 1) bytes
     if size <= 62 {
         // Buffer size is in units of 2 bytes, 0 = 0 bytes
-        size = (size + 1) & !0x01;
+        size = (size + 1) & !0x01; // round up to next multiple of two
 
-        let size_bits = size >> 1;
+        let size_bits = size >> 1; // to be placed in NUM_BLOCK
 
-        Ok((size, (size_bits << 10) as u16))
+        Ok((
+            size,   // actual size of buffer
+            (size_bits << 10) as u16  // the NUM_BLOCK bits (start at bit 10)
+        ))
     } else if size <= 1024 {
         // Buffer size is in units of 32 bytes, 0 = 32 bytes
-        size = (size + 31) & !0x1f;
+        size = (size + 31) & !0x1f;  // round up to next multiple of thirty-two
 
-        let size_bits = (size >> 5) - 1;
+        let size_bits = (size >> 5) - 1;  // to be placed in NUM_BLOCK
 
-        Ok((size, (0x8000 | (size_bits << 10)) as u16))
+        Ok((size, (0x8000 | (size_bits << 10)) as u16))  // as above
     } else {
         Err(UsbError::EndpointMemoryOverflow)
     }
 }
 
 impl Endpoint {
-    pub const MEM_START: usize = mem::size_of::<BufferDescriptor>() * NUM_ENDPOINTS;
-    // TODO: confirm correct
+    // start of USB SRAM
+    const MEM_ADDR: *mut VolatileCell<u16> = 0x4000_6000 as *mut VolatileCell<u16>;
+    // total size of USB SRAM in bytes
     pub const MEM_SIZE: usize = 1024;
-    // TODO: confirm correct or fix
-    // const MEM_ADDR: *mut VolatileCell<u32> = 0x4000_6000 as *mut VolatileCell<u32>;
-    const MEM_ADDR: *mut VolatileCell<u32> = 0x4000_6800 as *mut VolatileCell<u32>;
+    // offset in USB SRAM where endpoint buffers start (i.e., after buffer table descriptors)
+    pub const MEM_START: u16 = (mem::size_of::<BufferDescriptor>() * NUM_ENDPOINTS) as u16;
 
     pub fn new(index: u8) -> Endpoint {
+        // nothing allocated in constructor
         Endpoint {
             out_buf: None,
             in_buf: None,
@@ -66,9 +78,11 @@ impl Endpoint {
         }
     }
 
-    fn make_buf(addr: usize, size: usize)
-        -> Option<AtomicMutex<&'static mut [VolatileCell<u32>]>>
+    fn make_buf(addr: u16, size: usize)
+        -> Option<AtomicMutex<&'static mut [VolatileCell<u16>]>>
     {
+        // divide `addr` and `size` by two since they refer to
+        // bytes, but EndpointBuffer contains halfwords
         Some(AtomicMutex::new(
             unsafe {
                 slice::from_raw_parts_mut(
@@ -90,27 +104,33 @@ impl Endpoint {
         self.out_buf.is_some()
     }
 
-    pub fn set_out_buf(&mut self, addr: usize, size_and_bits: (usize, u16)) {
+    pub fn set_out_buf(&mut self, addr: u16, size_and_bits: (usize, u16)) {
         self.out_buf = Self::make_buf(addr, size_and_bits.0);
 
         let descr = self.descr();
         descr.addr_rx.set(addr);
-        descr.count_rx.set(size_and_bits.1 as usize);
+        descr.count_rx.set(size_and_bits.1); // this sets NUM_BLOCK
     }
 
     pub fn is_in_buf_set(&self) -> bool {
         self.in_buf.is_some()
     }
 
-    pub fn set_in_buf(&mut self, addr: usize, max_packet_size: usize) {
+    pub fn set_in_buf(&mut self, addr: u16, max_packet_size: usize) {
         self.in_buf = Self::make_buf(addr, max_packet_size);
 
         let descr = self.descr();
         descr.addr_tx.set(addr);
+        // RM: "packet size IN is limited by USB spec to 1023 bytes,
+        // and an explicit transmission specifies the count. So there
+        // is no analogue of OUT's (BL_SIZE, NUM_BLOCK[4:0]) for IN
         descr.count_tx.set(0);
     }
 
     fn descr(&self) -> &'static BufferDescriptor {
+        // implicitly, we place buffer table descriptors at start of USB SRAM area
+        // (in principle, they could be elsewhere, but this is the natural choice
+        // FYI: BufferDescriptor is 8 bytes sized
         unsafe { &*(Self::MEM_ADDR as *const BufferDescriptor).offset(self.index as isize) }
     }
 
@@ -165,7 +185,7 @@ impl Endpoint {
         };
 
         self.write_mem(in_buf, buf);
-        self.descr().count_tx.set(buf.len());
+        self.descr().count_tx.set(buf.len() as u16);
 
         interrupt::free(|cs| {
             self.set_stat_tx(cs, EndpointStatus::Valid);
@@ -174,18 +194,19 @@ impl Endpoint {
         Ok(buf.len())
     }
 
-    fn write_mem(&self, mem: &[VolatileCell<u32>], mut buf: &[u8]) {
+    fn write_mem(&self, mem: &[VolatileCell<u16>], mut buf: &[u8]) {
+        // rewrite when `mem` becomes a VolatileCell<u8>
         let mut addr = 0;
 
         while buf.len() >= 2 {
-            mem[addr].set((buf[0] as u16 | ((buf[1] as u16) << 8)) as u32);
+            mem[addr].set(buf[0] as u16 | ((buf[1] as u16) << 8));
             addr += 1;
 
             buf = &buf[2..];
         }
 
         if buf.len() > 0 {
-            mem[addr].set(buf[0] as u32);
+            mem[addr].set(buf[0] as u16);
         }
     }
 
@@ -206,7 +227,7 @@ impl Endpoint {
             return Err(UsbError::WouldBlock);
         }
 
-        let count = self.descr().count_rx.get() & 0x3ff;
+        let count = (self.descr().count_rx.get() & 0x3ff) as usize;
         if count > buf.len() {
             return Err(UsbError::BufferOverflow);
         }
@@ -221,7 +242,7 @@ impl Endpoint {
         Ok(count)
     }
 
-    fn read_mem(&self, mem: &[VolatileCell<u32>], mut buf: &mut [u8]) {
+    fn read_mem(&self, mem: &[VolatileCell<u16>], mut buf: &mut [u8]) {
         let mut addr = 0;
 
         while buf.len() >= 2 {
