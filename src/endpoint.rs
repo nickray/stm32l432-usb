@@ -8,6 +8,8 @@ use usb_device::{Result, UsbError};
 use usb_device::endpoint::EndpointType;
 use crate::atomic_mutex::AtomicMutex;
 
+use cortex_m_semihosting::hprintln;
+
 // this could/should probably be a VolatileCell<u8>, as L432
 // does not have the limitations of F103
 type EndpointBuffer = &'static mut [VolatileCell<u16>];
@@ -15,9 +17,10 @@ type EndpointBuffer = &'static mut [VolatileCell<u16>];
 pub const NUM_ENDPOINTS: usize = 8;
 
 // NB: in contrast to the F103, the "USB SRAM" (starting at 0x4000_6000)
-// is half-word (16 bit) organized.
+// is half-word (16 bit) wide.
 
 #[repr(C)]
+// #[derive(Debug)]
 struct BufferDescriptor {
     pub addr_tx: VolatileCell<u16>,
     pub count_tx: VolatileCell<u16>,
@@ -62,7 +65,8 @@ pub fn calculate_count_rx(mut size: usize) -> Result<(usize, u16)> {
 
 impl Endpoint {
     // start of USB SRAM
-    const MEM_ADDR: *mut VolatileCell<u16> = 0x4000_6000 as *mut VolatileCell<u16>;
+    // const MEM_ADDR: *mut VolatileCell<u16> = 0x4000_6000 as *mut VolatileCell<u16>;
+    const MEM_ADDR: *mut VolatileCell<u16> = 0x4000_6C00 as *mut VolatileCell<u16>;
     // total size of USB SRAM in bytes
     pub const MEM_SIZE: usize = 1024;
     // offset in USB SRAM where endpoint buffers start (i.e., after buffer table descriptors)
@@ -106,10 +110,22 @@ impl Endpoint {
 
     pub fn set_out_buf(&mut self, addr: u16, size_and_bits: (usize, u16)) {
         self.out_buf = Self::make_buf(addr, size_and_bits.0);
+        // hprintln!("made out_buf for ep{} at addr 0x{:x} of size {} with bits {}",
+        //     self.index, addr, size_and_bits.0, size_and_bits.1).unwrap();
 
+        // hprintln!("BEFORE...");
+        // hprintln!(" addr_tx (hex) = 0x{:x}", self.descr().addr_tx.get()).unwrap();
+        // hprintln!("count_tx (hex) = 0x{:x}", self.descr().count_tx.get()).unwrap();
+        // hprintln!(" addr_rx (hex) = 0x{:x}", self.descr().addr_rx.get()).unwrap();
+        // hprintln!("count_rx (hex) = 0x{:x}", self.descr().count_rx.get()).unwrap();
         let descr = self.descr();
         descr.addr_rx.set(addr);
         descr.count_rx.set(size_and_bits.1); // this sets NUM_BLOCK
+        // hprintln!("DOUBLE CHECKING!");
+        // hprintln!(" addr_tx (hex) = 0x{:x}", self.descr().addr_tx.get()).unwrap();
+        // hprintln!("count_tx (hex) = 0x{:x}", self.descr().count_tx.get()).unwrap();
+        // hprintln!(" addr_rx (hex) = 0x{:x}", self.descr().addr_rx.get()).unwrap();
+        // hprintln!("count_rx (hex) = 0x{:x}", self.descr().count_rx.get()).unwrap();
     }
 
     pub fn is_in_buf_set(&self) -> bool {
@@ -118,6 +134,8 @@ impl Endpoint {
 
     pub fn set_in_buf(&mut self, addr: u16, max_packet_size: usize) {
         self.in_buf = Self::make_buf(addr, max_packet_size);
+        // hprintln!("made  in_buf for ep{} at addr 0x{:x} of size {}",
+        //     self.index, addr, max_packet_size).unwrap();
 
         let descr = self.descr();
         descr.addr_tx.set(addr);
@@ -217,6 +235,8 @@ impl Endpoint {
             Some(ref b) => b,
             None => { return Err(UsbError::WouldBlock); }
         };
+        // hprintln!("ep{}", self.index).unwrap();
+        // hprintln!("len(self.out_buf) = {}", out_buf.len()).unwrap();
 
         let reg = self.reg();
         let reg_v = reg.read();
@@ -227,7 +247,12 @@ impl Endpoint {
             return Err(UsbError::WouldBlock);
         }
 
+        // hprintln!(" addr_tx (hex) = 0x{:x}", self.descr().addr_tx.get()).unwrap();
+        // hprintln!("count_tx (hex) = 0x{:x}", self.descr().count_tx.get()).unwrap();
+        // hprintln!(" addr_rx (hex) = 0x{:x}", self.descr().addr_rx.get()).unwrap();
+        // hprintln!("count_rx (hex) = 0x{:x}", self.descr().count_rx.get()).unwrap();
         let count = (self.descr().count_rx.get() & 0x3ff) as usize;
+        // hprintln!("attempting read of count = {}", count).unwrap();
         if count > buf.len() {
             return Err(UsbError::BufferOverflow);
         }
@@ -245,6 +270,7 @@ impl Endpoint {
     fn read_mem(&self, mem: &[VolatileCell<u16>], mut buf: &mut [u8]) {
         let mut addr = 0;
 
+        // hprintln!("len(mem) = {}, len(buf) = {}", mem.len(), buf.len()).unwrap();
         while buf.len() >= 2 {
             let word = mem[addr].get();
 

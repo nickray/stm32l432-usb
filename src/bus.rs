@@ -13,6 +13,8 @@ use stm32l4xx_hal::stm32::{USB, RCC};
 use crate::atomic_mutex::AtomicMutex;
 use crate::endpoint::{NUM_ENDPOINTS, Endpoint, EndpointStatus, calculate_count_rx};
 
+use cortex_m_semihosting::hprintln;
+
 struct Reset {
     delay: u32,
     pin: Mutex<RefCell<gpioa::PA12<gpio::Output<gpio::PushPull>>>>,
@@ -157,14 +159,15 @@ impl usb_device::bus::UsbBus for UsbBus {
         }
 
         self.max_endpoint = max;
+        hprintln!("max = {}", max).unwrap();
 
         interrupt::free(|cs| {
             let regs = self.regs.lock(cs);
 
             regs.cntr.modify(|_, w| w.pdwn().clear_bit());
 
-            // There is a chip specific startup delay. For STM32F103xx it's 1µs and this should wait for
-            // at least that long.
+            // There is a chip specific startup delay. For STM32F103xx it's 1µs
+            // and this should wait for at least that long.
             // TODO: figure out right delay for L43x/L44x
             delay(72);
 
@@ -192,6 +195,27 @@ impl usb_device::bus::UsbBus for UsbBus {
                 ep.configure(cs);
             }
         });
+    }
+
+    fn force_reset(&self) -> Result<()> {
+        interrupt::free(|cs| {
+            let regs = self.regs.lock(cs);
+
+            match self.reset {
+                Some(ref reset) => {
+                    let pdwn = regs.cntr.read().pdwn().bit_is_set();
+                    regs.cntr.modify(|_, w| w.pdwn().set_bit());
+
+                    reset.pin.borrow(cs).borrow_mut().set_low();
+                    delay(reset.delay);
+
+                    regs.cntr.modify(|_, w| w.pdwn().bit(pdwn));
+
+                    Ok(())
+                },
+                None => Err(UsbError::Unsupported),
+            }
+        })
     }
 
     fn set_device_address(&self, addr: u8) {
@@ -328,26 +352,5 @@ impl usb_device::bus::UsbBus for UsbBus {
                 .fsusp().clear_bit()
                 .lpmode().clear_bit());
         });
-    }
-
-    fn force_reset(&self) -> Result<()> {
-        interrupt::free(|cs| {
-            let regs = self.regs.lock(cs);
-
-            match self.reset {
-                Some(ref reset) => {
-                    let pdwn = regs.cntr.read().pdwn().bit_is_set();
-                    regs.cntr.modify(|_, w| w.pdwn().set_bit());
-
-                    reset.pin.borrow(cs).borrow_mut().set_low();
-                    delay(reset.delay);
-
-                    regs.cntr.modify(|_, w| w.pdwn().bit(pdwn));
-
-                    Ok(())
-                },
-                None => Err(UsbError::Unsupported),
-            }
-        })
     }
 }

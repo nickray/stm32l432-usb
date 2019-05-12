@@ -26,7 +26,7 @@ fn main() -> ! {
         // .use_hse(8.mhz())
         .sysclk(48.mhz())
         .pclk1(24.mhz())
-        .pclk2(24.mhz())
+        // .pclk2(24.mhz())
         .hsi48(true)
         .freeze(&mut flash.acr);
 
@@ -46,38 +46,21 @@ fn main() -> ! {
 
     let mut serial = cdc_acm::SerialPort::new(&usb_bus);
 
-    // let mut usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x5824, 0x27dd))
-    let mut usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x16c0, 0x27dd))
-        .manufacturer("Fake company")
-        .product("Serial port")
-        .serial_number("TEST")
+    // re. vid/pid pair: https://github.com/obdev/v-usb/blob/master/usbdrv/USB-IDs-for-free.txt
+    let mut usb_dev = UsbDeviceBuilder::new(
+            &usb_bus,
+            // UsbVidPid(0x16c0, 0x27dd),
+            UsbVidPid(0x0483, 0xa2ca),
+        )
+        .manufacturer("Hardcore Bits")
+        .product("USB in Rust on Solo")
+        .serial_number("12.05.2019")
         .device_class(cdc_acm::USB_CLASS_CDC)
         .build();
-
 
     // uuhhhh... this probably belongs in bus::Reset?
     unsafe {
         let bcdr = &(*USB::ptr()).bcdr;
-
-        // bcdr.write(|w| w.bcden().set_bit().dcden().set_bit());
-        // if bcdr.read().dcdet().bit_is_set() {
-        //     bcdr.write(|w| w.bcden().set_bit().pden().set_bit());
-        //     if bcdr.read().ps2det().bit_is_set() {
-        //         // res = unk
-        //     } else if bcdr.read().pdet().bit_is_set() {
-        //         bcdr.write(|w| w.bcden().set_bit().sden().set_bit());
-        //         if bcdr.read().sdet().bit_is_set() {
-        //             // res = dcp
-        //         } else {
-        //             // res = cdp
-        //         }
-        //     } else {
-        //         // res = sdp
-        //     }
-        // } else {
-        //     // res = dsc
-        // }
-
         bcdr.write(|w| w.dppu().set_bit());
     }
 
@@ -105,3 +88,25 @@ fn main() -> ! {
         }
     }
 }
+
+// stuff that could be in the BCDR block
+//
+// bcdr.write(|w| w.bcden().set_bit().dcden().set_bit());
+// if bcdr.read().dcdet().bit_is_set() {
+//     bcdr.write(|w| w.bcden().set_bit().pden().set_bit());
+//     if bcdr.read().ps2det().bit_is_set() {
+//         // res = unk
+//     } else if bcdr.read().pdet().bit_is_set() {
+//         bcdr.write(|w| w.bcden().set_bit().sden().set_bit());
+//         if bcdr.read().sdet().bit_is_set() {
+//             // res = dcp
+//         } else {
+//             // res = cdp
+//         }
+//     } else {
+//         // res = sdp
+//     }
+// } else {
+//     // res = dsc
+// }
+
