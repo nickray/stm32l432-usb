@@ -8,7 +8,7 @@ use usb_device::{Result, UsbError};
 use usb_device::endpoint::EndpointType;
 use crate::atomic_mutex::AtomicMutex;
 
-use cortex_m_semihosting::hprintln;
+// use cortex_m_semihosting::hprintln;
 
 // this could/should probably be a VolatileCell<u8>, as L432
 // does not have the limitations of F103

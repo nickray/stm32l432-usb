@@ -13,7 +13,7 @@ use stm32l4xx_hal::stm32::{USB, RCC};
 use crate::atomic_mutex::AtomicMutex;
 use crate::endpoint::{NUM_ENDPOINTS, Endpoint, EndpointStatus, calculate_count_rx};
 
-use cortex_m_semihosting::hprintln;
+// use cortex_m_semihosting::hprintln;
 
 struct Reset {
     delay: u32,
@@ -159,7 +159,7 @@ impl usb_device::bus::UsbBus for UsbBus {
         }
 
         self.max_endpoint = max;
-        hprintln!("max = {}", max).unwrap();
+        // hprintln!("max = {}", max).unwrap();
 
         interrupt::free(|cs| {
             let regs = self.regs.lock(cs);
@@ -181,6 +181,30 @@ impl usb_device::bus::UsbBus for UsbBus {
                 .pmaovrm().set_bit()
                 .ctrm().set_bit());
             regs.istr.modify(|_, w| unsafe { w.bits(0) });
+
+            regs.bcdr.write(|w| w.dppu().set_bit());
+
+            // Code to detect battery charging
+            //
+            // bcdr.write(|w| w.bcden().set_bit().dcden().set_bit());
+            // if bcdr.read().dcdet().bit_is_set() {
+            //     bcdr.write(|w| w.bcden().set_bit().pden().set_bit());
+            //     if bcdr.read().ps2det().bit_is_set() {
+            //         // res = unk
+            //     } else if bcdr.read().pdet().bit_is_set() {
+            //         bcdr.write(|w| w.bcden().set_bit().sden().set_bit());
+            //         if bcdr.read().sdet().bit_is_set() {
+            //             // res = dcp
+            //         } else {
+            //             // res = cdp
+            //         }
+            //     } else {
+            //         // res = sdp
+            //     }
+            // } else {
+            //     // res = dsc
+            // }
+
         });
     }
 

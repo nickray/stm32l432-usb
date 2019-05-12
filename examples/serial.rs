@@ -11,8 +11,6 @@ use stm32l4xx_hal::{prelude::*, stm32};
 use usb_device::prelude::*;
 use stm32l43x_usbd::UsbBus;
 
-use stm32l4xx_hal::stm32::{USB};
-
 mod cdc_acm;
 
 #[entry]
@@ -34,7 +32,7 @@ fn main() -> ! {
 
     let mut gpioa = dp.GPIOA.split(&mut rcc.ahb2);
 
-    let _usb_dm = gpioa.pa11.into_af10(&mut gpioa.moder, &mut gpioa.afrh);
+    // let _usb_dm = gpioa.pa11.into_af10(&mut gpioa.moder, &mut gpioa.afrh);
     let usb_dp = gpioa.pa12.into_af10(&mut gpioa.moder, &mut gpioa.afrh);
 
     // disable Vddusb power isolation
@@ -46,25 +44,18 @@ fn main() -> ! {
 
     let mut serial = cdc_acm::SerialPort::new(&usb_bus);
 
-    // re. vid/pid pair: https://github.com/obdev/v-usb/blob/master/usbdrv/USB-IDs-for-free.txt
+    // vid/pid: http://pid.codes/1209/5070/
     let mut usb_dev = UsbDeviceBuilder::new(
             &usb_bus,
-            // UsbVidPid(0x16c0, 0x27dd),
-            UsbVidPid(0x0483, 0xa2ca),
+            UsbVidPid(0x1209, 0x5070),
         )
         .manufacturer("Hardcore Bits")
-        .product("USB in Rust on Solo")
+        .product("USB in Rust on NUCLEO-L432KC")
         .serial_number("12.05.2019")
         .device_class(cdc_acm::USB_CLASS_CDC)
         .build();
 
-    // uuhhhh... this probably belongs in bus::Reset?
-    unsafe {
-        let bcdr = &(*USB::ptr()).bcdr;
-        bcdr.write(|w| w.dppu().set_bit());
-    }
-
-    usb_dev.force_reset().expect("reset failed");
+    // usb_dev.force_reset().expect("reset failed");
 
     loop {
         if !usb_dev.poll(&mut [&mut serial]) {
