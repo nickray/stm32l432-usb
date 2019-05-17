@@ -3,6 +3,7 @@
 
 /// CDC-ACM serial port example using polling in a busy loop.
 
+// extern crate panic_halt;
 extern crate panic_semihosting;
 
 use cortex_m_rt::entry;
@@ -48,10 +49,14 @@ fn main() -> ! {
     let mut usb_dev = UsbDeviceBuilder::new(
             &usb_bus,
             UsbVidPid(0x1209, 0x5070),
+            // NB: /var/lib/usbutils/usb.ids contains some of the pid.codes
+            // display in lsusb is then `Generic <owner> <title>,
+            // with entries from `1209/<pid>/index.md`
+            // UsbVidPid(0x1209, 0x2222),
         )
         .manufacturer("Hardcore Bits")
         .product("USB in Rust on NUCLEO-L432KC")
-        .serial_number("12.05.2019")
+        .serial_number("2019-05-12")
         .device_class(cdc_acm::USB_CLASS_CDC)
         .build();
 

@@ -24,3 +24,15 @@ rev = "e58e30f3b9c9bf4aab00ea039d129b964a3fd2d3"
 cortex-m-rt = "0.6.7"
 cortex-m-rtfm = "0.4.0"
 panic-semihosting = "0.5.1"
+# panic-halt = "0.2.0"
+
+[profile.dev]
+debug = true
+
+[profile.release]
+debug = true
+# lto = true
+opt-level = "s"
+
+[features]
+ccid_interrupt_ep = []
