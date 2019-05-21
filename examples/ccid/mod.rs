@@ -5,8 +5,11 @@ use core::cmp::min;
 use usb_device::class_prelude::*;
 use usb_device::Result;
 
+#[allow(dead_code)]
 const USB_CLASS_NONE: u8 = 0x00;
+#[allow(dead_code)]
 const USB_CLASS_CCID: u8 = 0x0B;
+#[allow(dead_code)]
 const USB_SUBCLASS_NONE: u8 = 0x0;
 
 const CCID_PROTOCOL_CCID: u8 = 0x00;
@@ -22,8 +25,7 @@ pub struct SmartCard<'a, B: UsbBus> {
     intf: InterfaceNumber,  // need this?
     read_ep: EndpointOut<'a, B>,
     write_ep: EndpointIn<'a, B>,
-    // #[cfg(ccid_interrupt_ep)]
-    // intr_ep: EndpointIn<'a, B>,
+    intr_ep: EndpointIn<'a, B>,
 
     buf: [u8; 64],
     len: usize,
@@ -36,8 +38,7 @@ impl<B: UsbBus> SmartCard<'_, B> {
             intf: alloc.interface(),
             read_ep: alloc.bulk(64),
             write_ep: alloc.bulk(64),
-            // #[cfg(ccid_interrupt_ep)]
-            // intr_ep: alloc.interrupt(8, 255),
+            intr_ep: alloc.interrupt(8, 255),
 
             buf: [0; 64],
             len: 0,
@@ -127,8 +128,7 @@ impl<B: UsbBus> UsbClass<B> for SmartCard<'_, B> {
 
         writer.endpoint(&self.write_ep)?;
         writer.endpoint(&self.read_ep)?;
-        // #[cfg(ccid_interrupt_ep)]
-        // writer.endpoint(&self.intr_ep)?;
+        writer.endpoint(&self.intr_ep)?;
 
 
         Ok(())
@@ -141,18 +141,4 @@ impl<B: UsbBus> UsbClass<B> for SmartCard<'_, B> {
         }
     }
 
-    // fn control_out(&mut self, xfer: ControlOut<B>) {
-    //     let req = *xfer.request();
-
-    //     if req.request_type == control::RequestType::Class
-    //         && req.recipient == control::Recipient::Interface
-    //     {
-    //     //     return match req.request {
-    //     //         REQ_SET_LINE_CODING => xfer.accept().unwrap(),
-    //     //         REQ_SET_CONTROL_LINE_STATE => xfer.accept().unwrap(),
-    //     //         _ => xfer.reject().unwrap(),
-    //     //     };
-    //         xfer.reject().unwrap();
-    //     }
-    // }
 }
