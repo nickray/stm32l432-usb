@@ -1,3 +1,8 @@
+**This fork was merged into [stm32-usbd](https://github.com/stm32-rs/stm32-usbd) and is no longer maintained.**
+
+**This repository is archived.**
+
+
 stm32l43x-usbd
 ===============
 
